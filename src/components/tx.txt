@@ -1,0 +1,92 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Editor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import * as Y from 'yjs';
+import { FireProvider } from './FireProvider';
+import { firebaseApp } from './firebase';
+import { getFirestore } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+
+const saveContentToFirestore = async (db, path, content) => {
+  const docRef = doc(db, path);
+  await setDoc(docRef, {
+    content: content,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+const loadContentFromFirestore = async (db, path) => {
+  const docRef = doc(db, path);
+  const docSnap = await getDoc(docRef);
+  if (docSnap.exists()) {
+    return docSnap.data().content || '';
+  } else {
+    console.log("No such document!");
+    return '';
+  }
+};
+
+const TextEditor = ({ documentPath }) => {
+  const [editor, setEditor] = useState(null);
+  const ydoc = useRef(new Y.Doc());
+  const fireProvider = useRef(null);
+
+  useEffect(() => {
+    const db = getFirestore(firebaseApp);
+
+    fireProvider.current = new FireProvider({
+      firebaseApp,
+      ydoc: ydoc.current,
+      path: documentPath,
+    });
+
+    fireProvider.current.onReady = () => {
+      console.log('Firebase sync ready');
+    };
+
+    fireProvider.current.init();
+
+    const editorInstance = new Editor({
+      extensions: [StarterKit],
+      content: '', // Initially empty
+      onUpdate: ({ editor }) => {
+        // Get content from editor as JSON
+        const content = editor.getJSON();
+        // Save content to Firestore
+        saveContentToFirestore(db, documentPath, content);
+      },
+    });
+
+    setEditor(editorInstance);
+
+    // Load initial content from Firestore and set it in the editor
+    loadContentFromFirestore(db, documentPath).then(content => {
+      if (content) {
+        // Set content only if it exists
+        editorInstance.commands.setContent(content);
+      }
+    });
+
+    // Sync Yjs document with Tiptap editor on any Yjs update
+    ydoc.current.on('update', () => {
+      if (editorInstance) {
+        const yContent = ydoc.current.getText('content').toString();
+        // Set Yjs text content to the editor
+        editorInstance.commands.setContent(JSON.parse(yContent));
+      }
+    });
+
+    return () => {
+      editorInstance.destroy();
+      fireProvider.current?.kill();
+    };
+  }, [documentPath]);
+
+  return (
+    <div>
+      {editor ? <EditorContent editor={editor} /> : <p>Loading editor...</p>}
+    </div>
+  );
+};
+
+export default TextEditor;

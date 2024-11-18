@@ -1,0 +1,5 @@
+The FireProvider serves as the bridge between Firestore and the Y.js document (ydoc). All updates are:
+
+Pushed from Y.js to Firestore automatically.
+Pulled from Firestore to Y.js, which then updates the Tiptap editor.
+don't need any additional code for syncing to Firestore—this is handled entirely by the FireProvider.
